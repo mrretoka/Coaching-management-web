@@ -23,7 +23,28 @@
     />
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
-    <div id="root"></div>
+    <div id="root">
+      <div
+        style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:#f8fafc;color:#0f172a;font-family:system-ui,-apple-system,sans-serif;text-align:center;"
+      >
+        <div
+          style="width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#3730a3;border-radius:9999px;animation:portalSpin 0.8s linear infinite;"
+        ></div>
+        <p style="margin-top:16px;font-size:15px;font-weight:600;color:#1e293b;">
+          Coaching Center Online Admission Portal
+        </p>
+        <p style="margin-top:4px;font-size:13px;color:#64748b;">
+          Loading admission portal...
+        </p>
+        <style>
+          @keyframes portalSpin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+        </style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

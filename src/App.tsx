@@ -147,7 +147,12 @@ export default function App() {
   );
 
   useEffect(() => {
+    const fallbackTimer = window.setTimeout(() => {
+      setAuthReady(true);
+    }, 1500);
+
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      window.clearTimeout(fallbackTimer);
       setUser(nextUser);
       setAuthReady(true);
 
@@ -161,7 +166,10 @@ export default function App() {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      unsubscribe();
+    };
   }, [verifyUserEligibility]);
 
   const handleSignInWithGoogle = async () => {

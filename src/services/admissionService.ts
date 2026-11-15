@@ -198,9 +198,14 @@ export async function fetchActiveSetupAndClasses(
       );
 
       let batches = extractBatchesFromData(data);
+      const hasInlineBatchArray =
+        Array.isArray(data.batches) ||
+        Array.isArray(data.batchList) ||
+        Array.isArray(data.batchNames) ||
+        Array.isArray(data.sections);
 
-      // Fallback: inspect optional batches subcollection only when array is absent
-      if (batches.length === 0) {
+      // Fallback: inspect optional batches subcollection only when no array field exists
+      if (batches.length === 0 && !hasInlineBatchArray) {
         try {
           const subBatchesSnap = await getDocs(
             collection(db, 'coaching_setup', setup!.id, 'classes', docSnap.id, 'batches')
