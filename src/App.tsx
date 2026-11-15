@@ -149,7 +149,7 @@ export default function App() {
   useEffect(() => {
     const fallbackTimer = window.setTimeout(() => {
       setAuthReady(true);
-    }, 1500);
+    }, 800);
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       window.clearTimeout(fallbackTimer);

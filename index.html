@@ -18,24 +18,43 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap"
+      />
+    </noscript>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-indigo-100 selection:text-indigo-900">
     <div id="root">
       <div
+        id="portal-boot-shell"
         style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:#f8fafc;color:#0f172a;font-family:system-ui,-apple-system,sans-serif;text-align:center;"
       >
         <div
+          id="portal-boot-spinner"
           style="width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#3730a3;border-radius:9999px;animation:portalSpin 0.8s linear infinite;"
         ></div>
-        <p style="margin-top:16px;font-size:15px;font-weight:600;color:#1e293b;">
+        <p id="portal-boot-title" style="margin-top:16px;font-size:15px;font-weight:600;color:#1e293b;">
           Coaching Center Online Admission Portal
         </p>
-        <p style="margin-top:4px;font-size:13px;color:#64748b;">
+        <p id="portal-boot-subtitle" style="margin-top:4px;font-size:13px;color:#64748b;max-width:340px;line-height:1.5;">
           Loading admission portal...
         </p>
+        <div id="portal-boot-actions" style="display:none;margin-top:16px;">
+          <button
+            type="button"
+            onclick="window.location.reload()"
+            style="min-height:42px;padding:10px 20px;border-radius:8px;border:none;background:#3730a3;color:#ffffff;font-size:13px;font-weight:600;cursor:pointer;"
+          >
+            Reload Portal
+          </button>
+        </div>
         <style>
           @keyframes portalSpin {
             to {
@@ -45,6 +64,31 @@
         </style>
       </div>
     </div>
+    <script>
+      (function () {
+        window.__PORTAL_MOUNTED__ = false;
+        window.setTimeout(function () {
+          if (window.__PORTAL_MOUNTED__) return;
+          var spinner = document.getElementById('portal-boot-spinner');
+          var title = document.getElementById('portal-boot-title');
+          var subtitle = document.getElementById('portal-boot-subtitle');
+          var actions = document.getElementById('portal-boot-actions');
+          if (!title || !subtitle) return;
+          if (spinner) spinner.style.display = 'none';
+          var unbuiltScript = document.querySelector('script[src*="main.tsx"]');
+          if (unbuiltScript && window.location.hostname.indexOf('github.io') !== -1) {
+            title.textContent = 'Deployment Build Required';
+            subtitle.textContent =
+              'This site is currently serving raw source files instead of the built web bundle. In GitHub repository Settings -> Pages, set Source to "GitHub Actions" so the site builds automatically.';
+          } else {
+            title.textContent = 'Taking Longer Than Expected';
+            subtitle.textContent =
+              'Please check your internet connection and tap below to reload the admission portal.';
+          }
+          if (actions) actions.style.display = 'block';
+        }, 4500);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

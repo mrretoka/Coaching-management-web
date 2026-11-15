@@ -65,6 +65,8 @@ export function InstitutionalSidebar({
             <img
               src={campusHallImg}
               alt="Bright academic coaching center study hall"
+              loading="lazy"
+              decoding="async"
               referrerPolicy="no-referrer"
               onError={() => setImageFailed(true)}
               className="h-full w-full object-cover"
