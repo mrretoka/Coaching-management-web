@@ -48,7 +48,13 @@ function parseNumericFee(raw: unknown): number | null {
 }
 
 function extractBatchesFromData(data: DocumentData): string[] {
-  const candidates = [data.batches, data.batchList, data.batchNames, data.sections];
+  const candidates = [
+    data.batches,
+    data.batchList,
+    data.batchNames,
+    data.batchTimings,
+    data.sections,
+  ];
   const collected: string[] = [];
 
   for (const candidate of candidates) {
@@ -63,6 +69,9 @@ function extractBatchesFromData(data: DocumentData): string[] {
         const isActive =
           record.isActive !== false &&
           record.active !== false &&
+          record.enabled !== false &&
+          record.deleted !== true &&
+          record.isDeleted !== true &&
           String(record.status ?? '').toLowerCase() !== 'inactive';
         if (!isActive) continue;
 
@@ -88,7 +97,15 @@ function extractBatchesFromData(data: DocumentData): string[] {
 }
 
 function isClassActive(data: DocumentData): boolean {
-  if (data.isActive === false || data.active === false) return false;
+  if (
+    data.isActive === false ||
+    data.active === false ||
+    data.enabled === false ||
+    data.deleted === true ||
+    data.isDeleted === true
+  ) {
+    return false;
+  }
   const status = String(data.status ?? '').toLowerCase();
   if (status === 'inactive' || status === 'archived' || status === 'disabled') {
     return false;
@@ -132,53 +149,58 @@ function parseSetupDoc(id: string, data: DocumentData): CoachingSetupInfo {
   };
 }
 
-export interface SetupCatalogResult {
-  setup: CoachingSetupInfo | null;
-  classes: CoachingClassItem[];
-  requiresSignInForCatalog: boolean;
+function parseClassEntry(
+  id: string,
+  data: DocumentData,
+  fallbackIndex: number,
+  preloadedSubBatches: string[] = []
+): CoachingClassItem {
+  const rawName =
+    data.name || data.className || data.title || data.label || data.grade || data.standard || id;
+  const fullYearFee = parseNumericFee(
+    data.fullYearFee ??
+      data.annualFee ??
+      data.yearlyFee ??
+      data.totalFee ??
+      data.courseFee ??
+      data.classFee ??
+      data.fee ??
+      data.fees ??
+      data.tuitionFee ??
+      data.amount
+  );
+
+  const inlineBatches = extractBatchesFromData(data);
+  const batches = inlineBatches.length > 0 ? inlineBatches : preloadedSubBatches;
+
+  const rawOrder =
+    typeof data.order === 'number'
+      ? data.order
+      : typeof data.sortOrder === 'number'
+        ? data.sortOrder
+        : fallbackIndex;
+
+  return {
+    id,
+    name: String(rawName).trim(),
+    fullYearFee,
+    batches,
+    order: rawOrder,
+  };
 }
 
-export async function fetchActiveSetupAndClasses(
-  preferredSetupId?: string | null
-): Promise<SetupCatalogResult> {
-  let setup: CoachingSetupInfo | null = null;
-
-  try {
-    if (preferredSetupId && preferredSetupId.trim()) {
-      const setupSnap = await getDoc(doc(db, 'coaching_setup', preferredSetupId.trim()));
-      if (setupSnap.exists()) {
-        setup = parseSetupDoc(setupSnap.id, setupSnap.data());
-      }
-    }
-
-    if (!setup) {
-      const setupsSnap = await getDocs(collection(db, 'coaching_setup'));
-      if (!setupsSnap.empty) {
-        const docs = setupsSnap.docs;
-        const activeDoc = docs.find((d) => isSetupActive(d.data())) ?? docs[0];
-        setup = parseSetupDoc(activeDoc.id, activeDoc.data());
-      }
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message.toLowerCase() : '';
-    if (message.includes('permission') || message.includes('insufficient')) {
-      return { setup: null, classes: [], requiresSignInForCatalog: true };
-    }
-    handleFirestoreError(error, OperationType.LIST, 'coaching_setup');
-  }
-
-  if (!setup) {
-    return { setup: null, classes: [], requiresSignInForCatalog: false };
-  }
-
-  const classesPath = `coaching_setup/${setup.id}/classes`;
+async function fetchClassesForSetup(
+  setupId: string,
+  setupRawData?: DocumentData
+): Promise<{ classes: CoachingClassItem[]; permissionDenied: boolean }> {
+  const classesPath = `coaching_setup/${setupId}/classes`;
   let classesSnap;
   try {
-    classesSnap = await getDocs(collection(db, 'coaching_setup', setup.id, 'classes'));
+    classesSnap = await getDocs(collection(db, 'coaching_setup', setupId, 'classes'));
   } catch (error) {
     const message = error instanceof Error ? error.message.toLowerCase() : '';
     if (message.includes('permission') || message.includes('insufficient')) {
-      return { setup, classes: [], requiresSignInForCatalog: true };
+      return { classes: [], permissionDenied: true };
     }
     handleFirestoreError(error, OperationType.LIST, classesPath);
   }
@@ -187,28 +209,19 @@ export async function fetchActiveSetupAndClasses(
     .filter((docSnap) => isClassActive(docSnap.data()))
     .map(async (docSnap, index): Promise<CoachingClassItem> => {
       const data = docSnap.data();
-      const rawName = data.name || data.className || data.title || docSnap.id;
-      const fullYearFee = parseNumericFee(
-        data.fullYearFee ??
-          data.annualFee ??
-          data.yearlyFee ??
-          data.totalFee ??
-          data.fee ??
-          data.tuitionFee
-      );
-
-      let batches = extractBatchesFromData(data);
+      const inlineBatches = extractBatchesFromData(data);
       const hasInlineBatchArray =
         Array.isArray(data.batches) ||
         Array.isArray(data.batchList) ||
         Array.isArray(data.batchNames) ||
+        Array.isArray(data.batchTimings) ||
         Array.isArray(data.sections);
 
-      // Fallback: inspect optional batches subcollection only when no array field exists
-      if (batches.length === 0 && !hasInlineBatchArray) {
+      let subBatches: string[] = [];
+      if (inlineBatches.length === 0 && !hasInlineBatchArray) {
         try {
           const subBatchesSnap = await getDocs(
-            collection(db, 'coaching_setup', setup!.id, 'classes', docSnap.id, 'batches')
+            collection(db, 'coaching_setup', setupId, 'classes', docSnap.id, 'batches')
           );
           if (!subBatchesSnap.empty) {
             const subLabels = subBatchesSnap.docs
@@ -218,39 +231,125 @@ export async function fetchActiveSetupAndClasses(
                 return String(bData.name || bData.batchName || bData.title || b.id).trim();
               })
               .filter(Boolean);
-            batches = Array.from(new Set(subLabels));
+            subBatches = Array.from(new Set(subLabels));
           }
         } catch {
           // Subcollection optional; ignore if absent or restricted
         }
       }
 
-      const rawOrder =
-        typeof data.order === 'number'
-          ? data.order
-          : typeof data.sortOrder === 'number'
-            ? data.sortOrder
-            : index;
-
-      return {
-        id: docSnap.id,
-        name: String(rawName).trim(),
-        fullYearFee,
-        batches,
-        order: rawOrder,
-      };
+      return parseClassEntry(docSnap.id, data, index, subBatches);
     });
 
-  const classes = await Promise.all(classPromises);
+  let classes = await Promise.all(classPromises);
+
+  // Optional fallback: if subcollection has no classes, inspect embedded classes array on setup doc
+  if (classes.length === 0 && setupRawData && Array.isArray(setupRawData.classes)) {
+    classes = setupRawData.classes
+      .filter((item): item is DocumentData => Boolean(item && typeof item === 'object'))
+      .filter((item) => isClassActive(item))
+      .map((item, idx) =>
+        parseClassEntry(
+          String(item.id || item.classId || item.name || item.className || `class_${idx}`),
+          item,
+          idx
+        )
+      );
+  }
+
   classes.sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
     return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
   });
 
+  return { classes, permissionDenied: false };
+}
+
+export interface SetupCatalogResult {
+  setup: CoachingSetupInfo | null;
+  classes: CoachingClassItem[];
+  catalogPermissionDenied: boolean;
+}
+
+export async function fetchActiveSetupAndClasses(
+  preferredSetupId?: string | null
+): Promise<SetupCatalogResult> {
+  // 1. If a specific setupId is provided in URL, load it directly
+  if (preferredSetupId && preferredSetupId.trim()) {
+    const cleanId = preferredSetupId.trim();
+    try {
+      const setupSnap = await getDoc(doc(db, 'coaching_setup', cleanId));
+      const setupData = setupSnap.exists() ? setupSnap.data() : undefined;
+      const setupInfo = setupSnap.exists()
+        ? parseSetupDoc(setupSnap.id, setupData!)
+        : {
+            id: cleanId,
+            name: 'Coaching Center',
+            academicYear: '2026–27',
+            currencySymbol: '₹',
+          };
+      const { classes, permissionDenied } = await fetchClassesForSetup(cleanId, setupData);
+      if (permissionDenied) {
+        return { setup: setupSnap.exists() ? setupInfo : null, classes: [], catalogPermissionDenied: true };
+      }
+      return { setup: setupInfo, classes, catalogPermissionDenied: false };
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (message.includes('permission') || message.includes('insufficient')) {
+        return { setup: null, classes: [], catalogPermissionDenied: true };
+      }
+      handleFirestoreError(error, OperationType.GET, `coaching_setup/${cleanId}`);
+    }
+  }
+
+  // 2. Discover setup documents in coaching_setup
+  let setupDocs: { id: string; data: DocumentData }[] = [];
+  try {
+    const setupsSnap = await getDocs(collection(db, 'coaching_setup'));
+    setupDocs = setupsSnap.docs.map((d) => ({ id: d.id, data: d.data() }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('permission') || message.includes('insufficient')) {
+      return { setup: null, classes: [], catalogPermissionDenied: true };
+    }
+    handleFirestoreError(error, OperationType.LIST, 'coaching_setup');
+  }
+
+  if (setupDocs.length === 0) {
+    return { setup: null, classes: [], catalogPermissionDenied: false };
+  }
+
+  // Prioritize active setups first, then fallback to others so a setup with classes is never missed
+  const orderedSetups = [
+    ...setupDocs.filter((d) => isSetupActive(d.data)),
+    ...setupDocs.filter((d) => !isSetupActive(d.data)),
+  ];
+
+  let fallbackSetup: CoachingSetupInfo | null = null;
+  let sawPermissionDenied = false;
+
+  for (const candidate of orderedSetups) {
+    const setupInfo = parseSetupDoc(candidate.id, candidate.data);
+    if (!fallbackSetup) fallbackSetup = setupInfo;
+
+    const { classes, permissionDenied } = await fetchClassesForSetup(candidate.id, candidate.data);
+    if (permissionDenied) {
+      sawPermissionDenied = true;
+      continue;
+    }
+    if (classes.length > 0) {
+      return { setup: setupInfo, classes, catalogPermissionDenied: false };
+    }
+  }
+
+  if (sawPermissionDenied) {
+    return { setup: fallbackSetup, classes: [], catalogPermissionDenied: true };
+  }
+
   return {
-    setup,
-    classes,
-    requiresSignInForCatalog: false,
+    setup: fallbackSetup,
+    classes: [],
+    catalogPermissionDenied: false,
   };
 }
 
@@ -427,7 +526,6 @@ export async function submitStudentAdmission(
   } catch (error) {
     const msg = error instanceof Error ? error.message.toLowerCase() : '';
     if (msg.includes('permission') || msg.includes('insufficient')) {
-      // Server-side rule rejection could indicate blocked profile or validation constraint
       const blockedAfterCheck = await checkBlockedGoogleProfile(
         input.setup.id,
         normalized,

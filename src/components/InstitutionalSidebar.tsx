@@ -9,7 +9,8 @@ interface InstitutionalSidebarProps {
   selectedClass: CoachingClassItem | null;
   currentStep: PortalStep;
   catalogLoading: boolean;
-  requiresSignInForCatalog: boolean;
+  catalogPermissionDenied: boolean;
+  isSignedIn: boolean;
 }
 
 const STEPS: { id: PortalStep; number: string; title: string; subtitle: string }[] = [
@@ -50,7 +51,8 @@ export function InstitutionalSidebar({
   selectedClass,
   currentStep,
   catalogLoading,
-  requiresSignInForCatalog,
+  catalogPermissionDenied,
+  isSignedIn,
 }: InstitutionalSidebarProps) {
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -186,10 +188,11 @@ export function InstitutionalSidebar({
             <div className="h-4 w-3/4 animate-pulse rounded bg-slate-100" />
             <div className="h-4 w-1/2 animate-pulse rounded bg-slate-100" />
           </div>
-        ) : requiresSignInForCatalog ? (
+        ) : catalogPermissionDenied ? (
           <p className="mt-3 text-xs leading-relaxed text-slate-600">
-            Sign in with your Google account to view open classes, batches, and annual fee
-            schedules.
+            {isSignedIn
+              ? 'Available classes could not be loaded right now. Please contact the coaching center to enable online portal access.'
+              : 'Sign in with your Google account to view open classes, batches, and annual fee schedules.'}
           </p>
         ) : selectedClass ? (
           <dl className="mt-3 divide-y divide-slate-100 text-sm">

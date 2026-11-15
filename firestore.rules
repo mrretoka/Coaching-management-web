@@ -1,41 +1,41 @@
 rules_version = '2';
 
 // ============================================================================
-// ADDITIVE FIRESTORE SECURITY RULES FOR THE ONLINE ADMISSION WEBSITE PORTAL
+// EXTRA ADDITIVE RULES FOR THE ONLINE ADMISSION WEBSITE PORTAL
+// Database: ai-studio-098f1d8c-1643-48f0-87ed-dddd0638fd26
 // ----------------------------------------------------------------------------
-// IMPORTANT: Do NOT overwrite your existing Coaching Management Android App
-// rules blindly. Merge these portal rules into your existing ruleset in the
-// Firebase Console for database: ai-studio-098f1d8c-1643-48f0-87ed-dddd0638fd26
+// DO NOT DELETE OR REPLACE YOUR EXISTING ANDROID APP RULES.
+// Paste ONLY the "PORTAL ADDITIVE BLOCK" below inside your existing
+// `match /databases/{database}/documents { ... }` block in Firebase Console ->
+// Firestore Database -> Rules. All function names use the `portal` prefix so
+// they will never conflict with your existing Android app helper functions.
 // ============================================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
-    function isValidId(id) {
+    // ---- BEGIN PORTAL ADDITIVE BLOCK (Copy from here) ----
+
+    function portalIsValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function isVerifiedGoogleUser() {
+    function portalIsVerifiedGoogleUser() {
       return request.auth != null
         && request.auth.token.email != null
         && request.auth.token.email_verified == true;
     }
 
-    function normalizedAuthEmail() {
+    function portalNormalizedAuthEmail() {
       return request.auth.token.email.lower();
     }
 
-    function isProfileBlocked(setupId) {
+    function portalIsProfileBlocked(setupId) {
       return exists(/databases/$(database)/documents/coaching_setup/$(setupId)/blocked_profiles/$(request.auth.uid))
-        || exists(/databases/$(database)/documents/coaching_setup/$(setupId)/blocked_profiles/$(normalizedAuthEmail()));
+        || exists(/databases/$(database)/documents/coaching_setup/$(setupId)/blocked_profiles/$(portalNormalizedAuthEmail()));
     }
 
-    function isValidStudentAdmission(data) {
+    function portalIsValidStudentAdmission(data) {
       return data.keys().hasAll([
           'name',
           'fatherName',
@@ -69,10 +69,10 @@ service cloud.firestore {
         && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
         && data.fatherName is string && data.fatherName.size() >= 2 && data.fatherName.size() <= 100
         && data.contactNumber is string && data.contactNumber.matches('^[0-9]{10}$')
-        && isValidId(data.setupId)
-        && isValidId(data.classId)
+        && portalIsValidId(data.setupId)
+        && portalIsValidId(data.classId)
         && (data.batch == null || (data.batch is string && data.batch.size() >= 1 && data.batch.size() <= 100))
-        && data.email is string && data.email == normalizedAuthEmail()
+        && data.email is string && data.email == portalNormalizedAuthEmail()
         && data.googleUid is string && data.googleUid == request.auth.uid
         && data.feeStatus is int && data.feeStatus == 0
         && data.dueDateLevel is int && data.dueDateLevel == 0
@@ -81,7 +81,7 @@ service cloud.firestore {
         && data.receipts is list && data.receipts.size() == 0;
     }
 
-    // Public read access for active coaching setup & classes catalog
+    // Website read-only access to coaching setups & classes (does not affect app write rules)
     match /coaching_setup/{setupId} {
       allow read: if true;
 
@@ -89,26 +89,27 @@ service cloud.firestore {
         allow read: if true;
       }
 
-      // Authenticated users may check only their own blocked status (by UID or email)
+      // Allow signed-in Google user to verify only their own blocked status
       match /blocked_profiles/{profileId} {
-        allow get: if isVerifiedGoogleUser()
-          && (profileId == request.auth.uid || profileId == normalizedAuthEmail());
-        allow list: if isVerifiedGoogleUser()
-          && (resource.data.googleUid == request.auth.uid || resource.data.email == normalizedAuthEmail());
+        allow get: if portalIsVerifiedGoogleUser()
+          && (profileId == request.auth.uid || profileId == portalNormalizedAuthEmail());
+        allow list: if portalIsVerifiedGoogleUser()
+          && (resource.data.googleUid == request.auth.uid || resource.data.email == portalNormalizedAuthEmail());
       }
     }
 
-    // Student self-registration: verified Google user, not blocked, strict schema & fee lock
+    // Website self-registration create into shared students collection
     match /students/{studentId} {
-      allow create: if isValidId(studentId)
-        && isVerifiedGoogleUser()
-        && isValidStudentAdmission(incoming())
-        && exists(/databases/$(database)/documents/coaching_setup/$(incoming().setupId)/classes/$(incoming().classId))
-        && !isProfileBlocked(incoming().setupId);
+      allow create: if portalIsValidId(studentId)
+        && portalIsVerifiedGoogleUser()
+        && portalIsValidStudentAdmission(request.resource.data)
+        && exists(/databases/$(database)/documents/coaching_setup/$(request.resource.data.setupId)/classes/$(request.resource.data.classId))
+        && !portalIsProfileBlocked(request.resource.data.setupId);
 
-      // Students can only read their own submitted registration records
-      allow get, list: if isVerifiedGoogleUser()
+      allow get, list: if portalIsVerifiedGoogleUser()
         && resource.data.googleUid == request.auth.uid;
     }
+
+    // ---- END PORTAL ADDITIVE BLOCK (Copy up to here) ----
   }
 }

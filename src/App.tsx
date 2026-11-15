@@ -75,7 +75,7 @@ export default function App() {
   const [classes, setClasses] = useState<CoachingClassItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [requiresSignInForCatalog, setRequiresSignInForCatalog] = useState(false);
+  const [catalogPermissionDenied, setCatalogPermissionDenied] = useState(false);
 
   const [signingIn, setSigningIn] = useState(false);
   const [checkingEligibility, setCheckingEligibility] = useState(false);
@@ -96,7 +96,12 @@ export default function App() {
       const result = await fetchActiveSetupAndClasses(preferredSetupId);
       setSetup(result.setup);
       setClasses(result.classes);
-      setRequiresSignInForCatalog(result.requiresSignInForCatalog);
+      setCatalogPermissionDenied(result.catalogPermissionDenied);
+      if (result.catalogPermissionDenied && auth.currentUser) {
+        setCatalogError(
+          'Unable to load available classes right now. Please tap Retry or contact the coaching center.'
+        );
+      }
       return result.setup;
     } catch {
       setCatalogError('Unable to load available classes right now. Please try again.');
@@ -117,7 +122,7 @@ export default function App() {
 
       try {
         let activeSetup = setup;
-        if (!activeSetup || requiresSignInForCatalog) {
+        if (!activeSetup || catalogPermissionDenied || classes.length === 0) {
           activeSetup = await loadCatalog();
         }
 
@@ -136,14 +141,13 @@ export default function App() {
           setIsBlocked(false);
         }
       } catch {
-        // Keep verification fail-safe without exposing technical details
         setIsBlocked(false);
         setAuthError('Unable to verify account eligibility right now. Please try again.');
       } finally {
         setCheckingEligibility(false);
       }
     },
-    [loadCatalog, requiresSignInForCatalog, setup]
+    [catalogPermissionDenied, classes.length, loadCatalog, setup]
   );
 
   useEffect(() => {
@@ -281,7 +285,8 @@ export default function App() {
                 selectedClass={selectedClass}
                 currentStep={currentStep}
                 catalogLoading={catalogLoading}
-                requiresSignInForCatalog={requiresSignInForCatalog}
+                catalogPermissionDenied={catalogPermissionDenied}
+                isSignedIn={Boolean(user)}
               />
             </div>
 
