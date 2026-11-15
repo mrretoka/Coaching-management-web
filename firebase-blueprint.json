@@ -1,0 +1,188 @@
+{
+  "entities": {
+    "CoachingSetup": {
+      "title": "CoachingSetup",
+      "description": "Active coaching center configuration created by the Coaching Management App.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name of the coaching center",
+          "maxLength": 160
+        },
+        "academicYear": {
+          "type": "string",
+          "description": "Current active academic session label",
+          "maxLength": 64
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether this coaching setup is currently active"
+        },
+        "address": {
+          "type": "string",
+          "description": "Optional institute campus address",
+          "maxLength": 300
+        },
+        "contactPhone": {
+          "type": "string",
+          "description": "Optional institute contact helpline",
+          "maxLength": 30
+        }
+      }
+    },
+    "CoachingClass": {
+      "title": "CoachingClass",
+      "description": "Configured class offering with full-year fee and optional batches.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Class display title (e.g., Class 10th)",
+          "maxLength": 100
+        },
+        "fullYearFee": {
+          "type": "number",
+          "description": "Read-only annual fee configured by the institute"
+        },
+        "batches": {
+          "type": "array",
+          "description": "Optional list of batch names (e.g., Morning, Evening)"
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether admissions are open for this class"
+        }
+      },
+      "required": ["name"]
+    },
+    "BlockedProfile": {
+      "title": "BlockedProfile",
+      "description": "Google profile permanently restricted from submitting new admissions until unblocked by an admin.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Normalized lowercase Google email address",
+          "maxLength": 254
+        },
+        "googleUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the blocked Google user",
+          "maxLength": 128
+        }
+      }
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Self-registered student admission record stored in the shared students collection.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Student full name",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "fatherName": {
+          "type": "string",
+          "description": "Father's full name",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "contactNumber": {
+          "type": "string",
+          "description": "10-digit student/parent mobile number",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{10}$"
+        },
+        "setupId": {
+          "type": "string",
+          "description": "Parent coaching_setup document ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "classId": {
+          "type": "string",
+          "description": "Selected class document ID from coaching_setup/{setupId}/classes",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "batch": {
+          "type": "string",
+          "description": "Selected batch name or null when class has no batches",
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Normalized verified Google email address",
+          "maxLength": 254
+        },
+        "googleUid": {
+          "type": "string",
+          "description": "Verified Firebase Auth UID matching request.auth.uid",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "feeStatus": {
+          "type": "integer",
+          "description": "Mandatory initial fee status 0"
+        },
+        "dueDateLevel": {
+          "type": "integer",
+          "description": "Mandatory initial due date level 0"
+        },
+        "currentDueDate": {
+          "type": "string",
+          "description": "Always null on initial web admission"
+        },
+        "firstDueDate": {
+          "type": "string",
+          "description": "Always null on initial web admission"
+        },
+        "receipts": {
+          "type": "array",
+          "description": "Always an empty array on initial web admission"
+        }
+      },
+      "required": [
+        "name",
+        "fatherName",
+        "contactNumber",
+        "setupId",
+        "classId",
+        "batch",
+        "email",
+        "googleUid",
+        "feeStatus",
+        "dueDateLevel",
+        "currentDueDate",
+        "firstDueDate",
+        "receipts"
+      ]
+    }
+  },
+  "firestore": {
+    "/coaching_setup/{setupId}": {
+      "schema": { "$ref": "#/entities/CoachingSetup" },
+      "description": "Active coaching setup metadata"
+    },
+    "/coaching_setup/{setupId}/classes/{classId}": {
+      "schema": { "$ref": "#/entities/CoachingClass" },
+      "description": "Available coaching classes, full-year fees, and optional batches"
+    },
+    "/coaching_setup/{setupId}/blocked_profiles/{profileId}": {
+      "schema": { "$ref": "#/entities/BlockedProfile" },
+      "description": "Google profiles blocked from submitting online admissions"
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Self-registered student admissions shared with the Coaching Management Android App"
+    }
+  }
+}

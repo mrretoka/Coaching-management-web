@@ -1,0 +1,114 @@
+rules_version = '2';
+
+// ============================================================================
+// ADDITIVE FIRESTORE SECURITY RULES FOR THE ONLINE ADMISSION WEBSITE PORTAL
+// ----------------------------------------------------------------------------
+// IMPORTANT: Do NOT overwrite your existing Coaching Management Android App
+// rules blindly. Merge these portal rules into your existing ruleset in the
+// Firebase Console for database: ai-studio-098f1d8c-1643-48f0-87ed-dddd0638fd26
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isVerifiedGoogleUser() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+
+    function normalizedAuthEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isProfileBlocked(setupId) {
+      return exists(/databases/$(database)/documents/coaching_setup/$(setupId)/blocked_profiles/$(request.auth.uid))
+        || exists(/databases/$(database)/documents/coaching_setup/$(setupId)/blocked_profiles/$(normalizedAuthEmail()));
+    }
+
+    function isValidStudentAdmission(data) {
+      return data.keys().hasAll([
+          'name',
+          'fatherName',
+          'contactNumber',
+          'setupId',
+          'classId',
+          'batch',
+          'email',
+          'googleUid',
+          'feeStatus',
+          'dueDateLevel',
+          'currentDueDate',
+          'firstDueDate',
+          'receipts'
+        ])
+        && data.keys().hasOnly([
+          'name',
+          'fatherName',
+          'contactNumber',
+          'setupId',
+          'classId',
+          'batch',
+          'email',
+          'googleUid',
+          'feeStatus',
+          'dueDateLevel',
+          'currentDueDate',
+          'firstDueDate',
+          'receipts'
+        ])
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && data.fatherName is string && data.fatherName.size() >= 2 && data.fatherName.size() <= 100
+        && data.contactNumber is string && data.contactNumber.matches('^[0-9]{10}$')
+        && isValidId(data.setupId)
+        && isValidId(data.classId)
+        && (data.batch == null || (data.batch is string && data.batch.size() >= 1 && data.batch.size() <= 100))
+        && data.email is string && data.email == normalizedAuthEmail()
+        && data.googleUid is string && data.googleUid == request.auth.uid
+        && data.feeStatus is int && data.feeStatus == 0
+        && data.dueDateLevel is int && data.dueDateLevel == 0
+        && data.currentDueDate == null
+        && data.firstDueDate == null
+        && data.receipts is list && data.receipts.size() == 0;
+    }
+
+    // Public read access for active coaching setup & classes catalog
+    match /coaching_setup/{setupId} {
+      allow read: if true;
+
+      match /classes/{classId} {
+        allow read: if true;
+      }
+
+      // Authenticated users may check only their own blocked status (by UID or email)
+      match /blocked_profiles/{profileId} {
+        allow get: if isVerifiedGoogleUser()
+          && (profileId == request.auth.uid || profileId == normalizedAuthEmail());
+        allow list: if isVerifiedGoogleUser()
+          && (resource.data.googleUid == request.auth.uid || resource.data.email == normalizedAuthEmail());
+      }
+    }
+
+    // Student self-registration: verified Google user, not blocked, strict schema & fee lock
+    match /students/{studentId} {
+      allow create: if isValidId(studentId)
+        && isVerifiedGoogleUser()
+        && isValidStudentAdmission(incoming())
+        && exists(/databases/$(database)/documents/coaching_setup/$(incoming().setupId)/classes/$(incoming().classId))
+        && !isProfileBlocked(incoming().setupId);
+
+      // Students can only read their own submitted registration records
+      allow get, list: if isVerifiedGoogleUser()
+        && resource.data.googleUid == request.auth.uid;
+    }
+  }
+}
