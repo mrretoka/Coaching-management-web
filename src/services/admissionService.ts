@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -316,6 +317,36 @@ export async function fetchActiveSetupAndClasses(
   }
 
   if (setupDocs.length === 0) {
+    // Fallback: handle Firestore setups where subcollection docs exist without a parent coaching_setup doc
+    try {
+      const groupSnap = await getDocs(collectionGroup(db, 'classes'));
+      const discovered = groupSnap.docs.filter((d) => isClassActive(d.data()));
+      if (discovered.length > 0) {
+        const firstSetupId = discovered[0].ref.parent.parent?.id;
+        if (firstSetupId) {
+          const matchingClasses = discovered
+            .filter((d) => d.ref.parent.parent?.id === firstSetupId)
+            .map((d, idx) => parseClassEntry(d.id, d.data(), idx))
+            .sort((a, b) =>
+              a.order !== b.order
+                ? a.order - b.order
+                : a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+            );
+          return {
+            setup: {
+              id: firstSetupId,
+              name: 'Coaching Center',
+              academicYear: '2026–27',
+              currencySymbol: '₹',
+            },
+            classes: matchingClasses,
+            catalogPermissionDenied: false,
+          };
+        }
+      }
+    } catch {
+      // Ignore if collectionGroup rule is not enabled
+    }
     return { setup: null, classes: [], catalogPermissionDenied: false };
   }
 

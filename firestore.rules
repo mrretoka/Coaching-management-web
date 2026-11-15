@@ -82,6 +82,10 @@ service cloud.firestore {
     }
 
     // Website read-only access to coaching setups & classes (does not affect app write rules)
+    match /{path=**}/classes/{classId} {
+      allow read: if true;
+    }
+
     match /coaching_setup/{setupId} {
       allow read: if true;
 
